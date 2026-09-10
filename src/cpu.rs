@@ -49,6 +49,7 @@ impl Cpu {
             0xA9 => self.lda_immediate(),
             0xAD => self.lda_absolute(),
             0x8D => self.sta_absolute(),
+            0x69 => self.adc_immediate(),
             _ => panic!("Unimplemented opcode: {:#04X}", opcode),
         }
     }
@@ -72,6 +73,23 @@ impl Cpu {
     fn sta_absolute(&mut self) {
         let addr = self.fetch_word();
         self.bus.write(addr, self.a);
+    }
+
+    /// ADC (immediate): add next byte plus current carry flag to accumulator
+    fn adc_immediate(&mut self) {
+        let value = self.fetch_byte();
+        let carry_in: u8 = if self.status & 0b0000_0001 != 0 { 1 } else { 0 };
+
+        let sum = self.a as u16 + value as u16 + carry_in as u16;
+
+        if sum > 0xFF {
+            self.status |= 0b0000_0001;
+        } else {
+            self.status &= 0b1111_1110;
+        }
+
+        self.a = sum as u8;
+        self.update_zero_and_negative_flags(self.a);
     }
 
     /// Updates the zero and negative status flags based on a result value
@@ -200,5 +218,48 @@ mod tests {
         cpu.step();
 
         assert_eq!(cpu.status, 0b1111_1111);
+    }
+
+    #[test]
+    fn adc_immediate_adds_value_to_accumulator() {
+        let mut bus = Bus::new();
+        bus.write(0x0000, 0x69);
+        bus.write(0x0001, 0x10);
+        let mut cpu = Cpu::new(bus);
+        cpu.a = 0x05;
+
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x15);
+        assert_eq!(cpu.status & 0b0000_0001, 0);
+    }
+
+    #[test]
+    fn adc_immediate_includes_existing_carry_flag() {
+        let mut bus = Bus::new();
+        bus.write(0x0000, 0x69);
+        bus.write(0x0001, 0x10);
+        let mut cpu = Cpu::new(bus);
+        cpu.a = 0x05;
+        cpu.status |= 0b0000_0001;
+
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x16);
+    }
+
+    #[test]
+    fn adc_immediate_sets_carry_flag_on_overflow() {
+        let mut bus = Bus::new();
+        bus.write(0x0000, 0x69);
+        bus.write(0x0001, 0x01);
+        let mut cpu = Cpu::new(bus);
+        cpu.a = 0xFF;
+
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x00);
+        assert_ne!(cpu.status & 0b0000_0001, 0);
+        assert_ne!(cpu.status & 0b0000_0010, 0);
     }
 }
