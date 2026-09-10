@@ -1,6 +1,5 @@
 /// The memory bus represents the NES's shared memory space
 /// The CPU (and eventually the PPU) reads and writes bytes through this
-
 #[allow(dead_code)]
 #[derive(Debug)]
 pub struct Bus {
