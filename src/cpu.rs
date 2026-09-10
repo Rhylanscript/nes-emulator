@@ -47,6 +47,7 @@ impl Cpu {
         let opcode = self.fetch_byte();
         match opcode {
             0xA9 => self.lda_immediate(),
+            0xAD => self.lda_absolute(),
             _ => panic!("Unimplemented opcode: {:#04X}", opcode),
         }
     }
@@ -54,6 +55,14 @@ impl Cpu {
     /// LDA (immediate): load the next byte directly into accumulator
     fn lda_immediate(&mut self) {
         let value = self.fetch_byte();
+        self.a = value;
+        self.update_zero_and_negative_flags(self.a);
+    }
+
+    /// LDA (absolute): load the value stored at a 16b addr into accumulator
+    fn lda_absolute(&mut self) {
+        let addr = self.fetch_word();
+        let value = self.bus.read(addr);
         self.a = value;
         self.update_zero_and_negative_flags(self.a);
     }
@@ -74,6 +83,14 @@ impl Cpu {
         } else {
             self.status &= 0b0111_1111;
         }
+    }
+
+    /// reads 2 bytes starting at current pc and combines
+    /// them into 16b addr
+    fn fetch_word(&mut self) -> u16 {
+        let low = self.fetch_byte() as u16;
+        let high = self.fetch_byte() as u16;
+        (high << 8) | low
     }
 }
 
@@ -118,5 +135,34 @@ mod tests {
 
         assert_eq!(cpu.a, 0x00);
         assert_ne!(cpu.status & 0b0000_0010, 0);
+    }
+
+    #[test]
+    fn lda_absolute_loads_value_from_memory_address() {
+        let mut bus = Bus::new();
+        bus.write(0x0000, 0xAD);
+        bus.write(0x0001, 0x42);
+        bus.write(0x0002, 0x00);
+        bus.write(0x0042, 0x99);
+        let mut cpu = Cpu::new(bus);
+
+        cpu.step();
+
+        assert_eq!(cpu.a, 0x99);
+    }
+
+    #[test]
+    fn lda_absolute_sets_negative_flag_when_high_bit_set() {
+        let mut bus = Bus::new();
+        bus.write(0x0000, 0xAD);
+        bus.write(0x0001, 0x42);
+        bus.write(0x0002, 0x00);
+        bus.write(0x0042, 0b1000_0001);
+        let mut cpu = Cpu::new(bus);
+
+        cpu.step();
+
+        assert_eq!(cpu.a, 0b1000_0001);
+        assert_ne!(cpu.status & 0b1000_0000, 0);
     }
 }
